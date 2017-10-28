@@ -7,17 +7,26 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <thread>
+#include<chrono>
+#include<mutex>
+#include <memory>
+#include <functional>
 using namespace std;
 int main(int argc,char* argv[])
 {
 
 	try {
 		vector<int> numbers;
-		start(argc, argv,numbers);
+		int rounds=0;
+		int iternum=0;
+		start(argc, argv,numbers,rounds, iternum);
 		cout<<"vector numbers:"<<endl;
 		for (auto i = numbers.begin(); i != numbers.end(); ++i){
 			std::cout << *i << ' ';
 		}
+		string sched = argv[scheduler];
+		string waitstrat = argv[wait_strategy];
 		//if none of the game could be start, it means the command is wrong 
 	}
 	// print out the bad alloc with usage message or any other results code and its corresponding error message
@@ -25,9 +34,10 @@ int main(int argc,char* argv[])
 		return usage(argv[program_name], a);
 	}
 }
-int start(int argc, char* argv[], vector<int>& num){
-	int roundnum;
-	int iterationnum;
+void task1() {
+	cout << "now is task1!" << endl;
+}
+int start(int argc, char* argv[], vector<int>& num, int& rounds, int& iternum){
 	if (argc < argnum) {
 			throw toofewargc;
 		}
@@ -45,6 +55,8 @@ int start(int argc, char* argv[], vector<int>& num){
 			throw iteration_type;
 		}
 		else{ 
+			rounds = tointeger(argv[rounds]);
+			iternum = tointeger(argv[iterations]);
 			for (int i=number_times;i<argc;++i){
 				if(!checkinput(argv[i])) throw num_type;
 				else {
@@ -56,6 +68,12 @@ int start(int argc, char* argv[], vector<int>& num){
 			}
 			return 0;
 		}
+}
+int tointeger(char* a) {
+	istringstream ss(a);
+	int x;
+	ss >> x;
+	return x;
 }
 bool checkinput(char* a){
 	istringstream ss(a);
@@ -86,6 +104,10 @@ int usage(char * program_name, int error_value)// print out the program's usage 
 	}
 	else if (error_value == toofewargc) {
 		cout << "Too few arguments <program_name> <scheduler> <wait-strategy> <rounds> <iterations> <number>+" << endl;
+		return error_value;
+	}
+	else if (error_value == num_type){
+		cout <<"number type not correct, int please."<< endl;
 		return error_value;
 	}
 	else return error_value;

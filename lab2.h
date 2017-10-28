@@ -10,7 +10,8 @@ enum wait_strategies{spin,sleep,};
 enum results_code {
 	success, scheduler_notcorrect, waitstrategy_notcorrect, rounds_type = 5, argnum=6, num_type, toofewargc,unknown_exception = -1, iteration_type = -3,
 };
-int start(int argc, char* argv[], std::vector<int>& num);
+int start(int argc, char* argv[], std::vector<int>& num, int& rounds, int& iternum);
 int usage(char * program_name, int error_value);
 bool checkinput(char* a);
+int tointeger(char* a);
 #endif
