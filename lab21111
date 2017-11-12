@@ -1,0 +1,272 @@
+//learnt a lot from the post http://blog.csdn.net/u014019422/article/details/20989805
+//https://stackoverflow.com/questions/32657609/pinning-a-thread-to-a-core-in-a-cpuset-through-c
+//http://man7.org/linux/man-pages/man3/pthread_setschedparam.3.html
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <string.h>
+#include <signal.h>
+#include <sched.h>
+#include <pthread.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <unistd.h>
+
+int wrong_argument=-2;
+volatile int data[128];
+char* scheduler;
+char* wait_strategy;
+int MidPriority,MaxPriority,MinPriority; 
+int policy;
+int datasize;
+volatile int indexnum;
+int strategytaken;
+pthread_spinlock_t spinlockp;
+pthread_mutex_t mutexp;
+pthread_spinlock_t spinlocksp;
+pthread_mutex_t mutexsp;
+volatile int rounds;
+volatile int iterations;
+int cpunum=4;
+#define handle_error_en(en,msg)\
+	do { errno = en; perror(msg);exit(EXIT_FAILURE); } while (0)
+int policy_set(char* scheduler){
+	if(!strcmp(scheduler,"SCHED_RR")){
+		policy = SCHED_RR;
+		return 0;
+	}
+	else if (!strcmp(scheduler,"SCHED_NORMAL")){
+		policy = SCHED_OTHER;
+		return 0;
+	}
+	else if (!strcmp(scheduler,"SCHED_FIFO")){
+		policy = SCHED_FIFO;
+		return 0;
+	}
+	else return wrong_argument;
+}
+void *fn(void *arg)
+{
+	//int poli;
+	int pocy;
+  struct sched_param param;
+pthread_getschedparam(pthread_self(),&pocy,&param);
+ if(pocy == SCHED_OTHER)
+    printf("SCHED_OTHER\n");
+  if(pocy == SCHED_RR)
+    printf("SCHED_RR \n");
+  if(pocy==SCHED_FIFO)
+    printf("SCHED_FIFO\n");
+  
+  
+  
+
+	if(!strcmp(wait_strategy,"spin")){
+		pthread_spin_lock(&spinlockp);
+	}
+	else {
+		pthread_mutex_lock(&mutexp);
+	}
+	int currentdata;
+	int insider_rounds=rounds;
+	int insider_iterations=iterations;
+    printf("I'm in \n");
+    while(insider_rounds!=0){
+    	// printf("insider rounds is current %d",insider_rounds);
+    	// printf("\n");
+    	if(!strcmp(wait_strategy,"spin")){
+		pthread_spin_lock(&spinlocksp);
+	}
+	else {
+		pthread_mutex_lock(&mutexsp);
+	}
+    	if (indexnum == datasize-1)
+    		indexnum = 0;
+    	currentdata = data[indexnum];
+    	indexnum++;
+    	while(insider_iterations!=0){
+    		// printf("insider iteration is current %d",insider_iterations);
+    		// printf("\n");
+    		currentdata = currentdata*currentdata*currentdata;
+    		insider_iterations--;
+    	}
+    	printf("current data bad bad data: %d\n", currentdata);
+    	if(!strcmp(wait_strategy,"spin")){
+		pthread_spin_unlock(&spinlocksp);
+	}
+	else{
+		pthread_mutex_unlock(&mutexsp);
+	}
+	insider_rounds--;
+
+
+    }
+    if(!strcmp(wait_strategy,"spin")){
+		pthread_spin_unlock(&spinlockp);
+	}
+	else{
+		pthread_mutex_unlock(&mutexp);
+	}
+
+    return ((void *)0);
+}
+// int showSchedParam(pthread_t thread)
+// {
+//   struct sched_param   param;
+//   int                  policy;
+//   int                  rc;
+//   printf("Get scheduling parameters\n");
+//   rc = pthread_getschedparam(thread, &policy, &param);
+
+//   printf("The thread scheduling parameters indicate:\n"
+//          "priority = %d\n", param.sched_priority);
+//   return param.sched_priority;
+// }
+int main(int argc, char* argv[]){
+	char* data1 = "first thread ";
+	char* data2 = "second thread ";
+	cpu_set_t cpuset;
+	pthread_t thread[8];
+	if(argc<6){
+		printf("Usage: <program_name> <scheduler> <wait-strategy> <rounds> <iterations> <number>+\n");
+		return wrong_argument;
+	}
+	scheduler = argv[1];
+	if(policy_set(scheduler)){
+		printf("Scheduler not correct!\n");
+		return wrong_argument;
+	}
+	//printf("%s\n",scheduler);
+	wait_strategy = argv[2];
+	if(!strcmp(wait_strategy,"spin")){
+		pthread_spin_lock(&spinlockp);
+		pthread_spin_init(&spinlockp, 0);
+		pthread_spin_lock(&spinlocksp);
+		pthread_spin_init(&spinlocksp, 0);
+	}
+	else if(!strcmp(wait_strategy,"sleep")){
+		pthread_mutex_lock(&mutexp);
+		pthread_mutex_init(&mutexp, NULL);
+		pthread_mutex_lock(&mutexsp);
+		pthread_mutex_init(&mutexsp, NULL);
+	}
+	else{
+		printf("Wait_strategy not correct!\n");
+		return wrong_argument;
+	}
+	rounds = atoi(argv[3]);
+	iterations = atoi(argv[4]);
+	if(rounds<0 || iterations <0){
+		printf("Rounds or iterations is less than 0!\n");
+		return wrong_argument;
+	}
+	int i=0;
+	for(i=5;i<argc;i++){
+		data[i-5]=atoi(argv[i]);
+		printf("%d\t", data[i-5]);
+	}
+	datasize = argc-5;
+	printf("\n");
+
+	 MinPriority = sched_get_priority_max(policy);  
+   	MaxPriority = sched_get_priority_min(policy); 
+   	 // Step 3: calculate priority value  
+   MidPriority = (MaxPriority + MinPriority)/2;  
+ 
+    
+ 
+	for(i=0;i<cpunum;i++){
+		struct sched_param param;
+		// Step 4: assign priority value to sched_param structure  
+   		param.sched_priority = MidPriority;
+		CPU_ZERO(&cpuset);
+		CPU_SET(i,&cpuset);
+		int poli;
+  		// pthread_attr_t attr,attr1;
+  		// pthread_attr_init(&attr);
+  		// pthread_attr_setschedpolicy(&attr,policy);
+  		// poli=pthread_attr_setschedparam(&attr,&param);
+  // 		if(poli){
+		// 	handle_error_en(poli, "pthread_setschedparam");
+		// }
+  // 		// pthread_attr_setinheritsched(&attr1,PTHREAD_EXPLICIT_SCHED);
+  // 		// pthread_attr_init(&attr1);
+  // 		// pthread_attr_setschedpolicy(&attr1,policy);
+  // 		// poli=pthread_attr_setschedparam(&attr1,&param);
+  // 		if(poli){
+		// 	handle_error_en(poli, "pthread_setschedparam");
+		// }
+  		//pthread_attr_setinheritsched(&attr1,PTHREAD_EXPLICIT_SCHED);
+  		if (CPU_ISSET(i, &cpuset)) {
+			printf("    CPU %d\n", i);
+		
+		int a=pthread_create(&thread[i*2],NULL,fn,(void*) data1);
+		if(a){
+			handle_error_en(a, "pthread_create");
+		}
+		poli=pthread_setschedparam(thread[i*2],policy,&param);
+		if(poli){
+			handle_error_en(poli, "pthread_setschedparam");
+		}
+		int b=pthread_create(&thread[i*2+1],NULL,fn,(void*) data2);
+		if(b){
+			handle_error_en(b, "pthread_create");
+		}
+		
+		poli=pthread_setschedparam(thread[i*2+1],policy,&param);
+		if(poli){
+			handle_error_en(poli, "pthread_setschedparam");
+		}
+		// rc = pthread_setschedparam(thread[i*2+1], policy, &param);
+		// if(rc){
+
+		// 	handle_error_en(rc, "pthread_setschedparam");
+		// }
+		int s;
+		s = pthread_setaffinity_np(thread[i*2],sizeof(cpu_set_t),&cpuset);
+    	if(s) handle_error_en(s, "pthread_setaffinity_np");
+    	s = pthread_setaffinity_np(thread[i*2+1], sizeof(cpu_set_t), &cpuset);
+    	if(s) handle_error_en(s, "pthread_getaffinity_np");
+    	s = pthread_getaffinity_np(thread[i*2], sizeof(cpu_set_t), &cpuset);
+		if (s != 0) {
+    		handle_error_en(s, "pthread_getaffinity_np");
+		}
+		s = pthread_getaffinity_np(thread[i*2+1], sizeof(cpu_set_t), &cpuset);
+		if (s != 0) {
+    		handle_error_en(s, "pthread_getaffinity_np");
+		}
+    	CPU_CLR (i, &cpuset); 
+    	// pthread_attr_destroy(&attr);
+    	// pthread_attr_destroy(&attr1);
+  //   	int res;
+  //   	res = pthread_join(thread[i*2], NULL);
+  //   	printf("pthread_join() returned %d (%s)\n", res, strerror(res));
+  //   	res = pthread_join(thread[i*2+1], NULL);
+  //   	printf("pthread_join() returned %d (%s)\n", res, strerror(res));
+		
+		// res = pthread_kill(thread[i*2], 0);
+  //   	printf("pthread_kill() returned %d (%s)\n", res, strerror(res));
+  //   	res = pthread_kill(thread[i*2+1], 0);
+  //   	printf("pthread_kill() returned %d (%s)\n", res, strerror(res));
+		
+		
+		
+		
+    }
+		//printf("Set returned by pthread_getaffinity_np() contained:\n");
+	}
+
+	for(i=0;i<8;i++){
+		int res;
+		res=pthread_join(thread[i],NULL);
+		printf("%i pthread_join() returned %d (%s)\n", i,res, strerror(res));
+	}
+	if(!strcmp(wait_strategy,"spin")){
+		pthread_spin_destroy(&spinlockp);
+	}
+	else{
+		pthread_mutex_destroy(&mutexp);
+	}
+    exit(EXIT_SUCCESS);
+
+	return 0;
+}
